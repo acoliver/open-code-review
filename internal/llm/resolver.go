@@ -91,6 +91,7 @@ const (
 type ResolveOptions struct {
 	Provider string
 	Model    string
+	Context  context.Context
 }
 
 // ResolveEndpoint resolves an endpoint without per-run overrides.
@@ -401,14 +402,14 @@ func tryOCRConfig(path string, opts ResolveOptions) (ResolvedEndpoint, bool, err
 		cfg.Provider = opts.Provider
 	}
 	if cfg.Provider != "" {
-		return tryProviderConfig(cfg, opts.Model)
+		return tryProviderConfig(cfg, opts.Model, opts.Context)
 	}
 
 	return tryLegacyLlmConfig(cfg, opts.Model)
 }
 
 // tryProviderConfig resolves an endpoint from the provider-based configuration.
-func tryProviderConfig(cfg configFile, modelOverride string) (ResolvedEndpoint, bool, error) {
+func tryProviderConfig(cfg configFile, modelOverride string, callerContext context.Context) (ResolvedEndpoint, bool, error) {
 	preset, isPreset := LookupProvider(cfg.Provider)
 
 	var entry providerEntryConfig
@@ -637,8 +638,10 @@ func tryProviderConfig(cfg configFile, modelOverride string) (ResolvedEndpoint, 
 		apiKey = resolved
 	}
 	if externalAuth != nil && externalAuth.NeedsRefresh(time.Now()) {
-		// Endpoint resolution has no caller context, so only the refresh timeout can bound this request.
-		refreshCtx, cancel := context.WithTimeout(context.Background(), codexRefreshTimeout)
+		if callerContext == nil {
+			callerContext = context.Background()
+		}
+		refreshCtx, cancel := context.WithTimeout(callerContext, codexRefreshTimeout)
 		defer cancel()
 		auth, err := newCodexOAuthClient().RefreshIfNeeded(refreshCtx, codexAuthStore, time.Now)
 		if err != nil {

@@ -136,6 +136,9 @@ func runAuthLogout(ctx context.Context, out io.Writer, store codexauth.CodexStor
 			return fmt.Errorf("clear local Codex credentials: %w", clearErr)
 		}
 		_, _ = fmt.Fprintln(out, "Local credentials were removed, but the credential refresh lock could not be acquired; server-side revocation was skipped.", accessTokenCaveat)
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
 		return nil
 	}
 	if loadErr != nil && !errors.Is(loadErr, codexauth.ErrNotFound) {
@@ -148,6 +151,9 @@ func runAuthLogout(ctx context.Context, out io.Writer, store codexauth.CodexStor
 	}
 	if revokeErr != nil {
 		_, _ = fmt.Fprintln(out, "Local credentials were removed, but server-side revocation failed.", accessTokenCaveat)
+		if errors.Is(revokeErr, context.Canceled) || errors.Is(revokeErr, context.DeadlineExceeded) {
+			return revokeErr
+		}
 		return nil
 	}
 	_, err = fmt.Fprintln(out, "The refresh token was revoked and local Codex credentials were removed.", accessTokenCaveat)

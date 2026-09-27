@@ -807,6 +807,47 @@ func TestAccumulateResponseStream(t *testing.T) {
 	})
 }
 
+func TestAccumulateResponseStreamRejectsExcessOutput(t *testing.T) {
+	item := `{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"` + strings.Repeat("x", 1024) + `"}]}`
+	event := responseStreamEvents(t, `{"type":"response.output_item.done","output_index":0,"item":`+item+`}`)[0]
+	var accumulator responseStreamAccumulator
+	for accumulator.outputBytes+len(event.AsResponseOutputItemDone().Item.RawJSON())+64 <= maxResponseStreamOutputBytes {
+		if err := accumulator.add(event); err != nil {
+			t.Fatalf("add item below limit: %v", err)
+		}
+	}
+	before := len(accumulator.items)
+	err := accumulator.add(event)
+	if err == nil || !strings.Contains(err.Error(), "output exceeds") {
+		t.Fatalf("add item above limit = %v, want output limit error", err)
+	}
+	if len(accumulator.items) != before {
+		t.Errorf("items after rejected item = %d, want %d", len(accumulator.items), before)
+	}
+	if class, phase := classifyStreamError(err); class != ErrorClassProvider || phase != FailurePhaseStream {
+		t.Errorf("classification = %s/%s, want provider/stream", class, phase)
+	}
+}
+
+func TestAccumulateResponseStreamRejectsOversizedItem(t *testing.T) {
+	item := `{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"` + strings.Repeat("x", maxResponseStreamOutputBytes) + `"}]}`
+	_, err := accumulateResponseStream(responseStreamEvents(t, `{"type":"response.output_item.done","output_index":0,"item":`+item+`}`))
+	if err == nil || !strings.Contains(err.Error(), "output exceeds") {
+		t.Fatalf("oversized output error = %v, want output limit error", err)
+	}
+}
+
+func TestAccumulateResponseStreamRejectsTerminalBeyondLimit(t *testing.T) {
+	terminal := responseStreamEvents(t, `{"type":"response.completed","response":{"id":"resp_stream","status":"completed","output":[]}}`)[0]
+	accumulator := responseStreamAccumulator{outputBytes: maxResponseStreamOutputBytes - 1}
+	if err := accumulator.add(terminal); err == nil || !strings.Contains(err.Error(), "output exceeds") {
+		t.Fatalf("terminal error = %v, want output limit error", err)
+	}
+	if accumulator.terminal != nil {
+		t.Fatal("oversized terminal was retained")
+	}
+}
+
 func TestOpenAIResponsesClient_StreamingSSEPreservesNativeReasoning(t *testing.T) {
 	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

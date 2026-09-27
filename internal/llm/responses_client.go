@@ -280,21 +280,34 @@ type indexedResponseOutputItem struct {
 	raw         json.RawMessage
 }
 
+const maxResponseStreamOutputBytes = 16 << 20
+
 type responseStreamAccumulator struct {
-	items    []indexedResponseOutputItem
-	terminal *responses.Response
+	items       []indexedResponseOutputItem
+	outputBytes int
+	terminal    *responses.Response
 }
 
 func (a *responseStreamAccumulator) add(event responses.ResponseStreamEventUnion) error {
 	switch event.Type {
 	case "response.output_item.done":
 		done := event.AsResponseOutputItemDone()
+		raw := done.Item.RawJSON()
+		// Include per-item bookkeeping so a stream of tiny items is bounded too.
+		const itemOverhead = 64
+		if len(raw)+itemOverhead > maxResponseStreamOutputBytes-a.outputBytes {
+			return &responseStreamEventError{code: "output_limit_exceeded", message: "output exceeds 16 MiB stream limit"}
+		}
+		a.outputBytes += len(raw) + itemOverhead
 		a.items = append(a.items, indexedResponseOutputItem{
 			outputIndex: done.OutputIndex,
-			raw:         json.RawMessage(done.Item.RawJSON()),
+			raw:         json.RawMessage(raw),
 		})
 	case "response.completed", "response.failed", "response.incomplete":
 		response := event.Response
+		if len(response.RawJSON()) > maxResponseStreamOutputBytes-a.outputBytes {
+			return &responseStreamEventError{code: "output_limit_exceeded", message: "output exceeds 16 MiB stream limit"}
+		}
 		a.terminal = &response
 	case "error":
 		streamErr := event.AsError()

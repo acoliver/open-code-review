@@ -4,6 +4,8 @@
 package llm
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -146,6 +148,47 @@ func TestResolveEndpoint_CodexRefreshesStoredCredential(t *testing.T) {
 	}
 	if store.saves != 1 {
 		t.Errorf("Save calls = %d, want 1", store.saves)
+	}
+}
+
+func TestResolveEndpoint_CodexRefreshRespectsCallerCancellation(t *testing.T) {
+	clearAllEnv(t)
+	store := &resolverCodexStore{auth: &codexauth.CodexAuth{
+		AccessToken: "expired-access", RefreshToken: "refresh-token", ExpiresAt: time.Now().Add(-time.Minute),
+	}}
+	started := make(chan struct{})
+	transport := resolverRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		close(started)
+		<-req.Context().Done()
+		return nil, req.Context().Err()
+	})
+	setCodexResolverAuthSeams(t, store, &codexauth.OAuthClient{
+		Issuer: "https://auth.example", HTTPClient: &http.Client{Transport: transport},
+	})
+	path := codexResolverConfig(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, err := ResolveEndpointWithOptions(path, ResolveOptions{Context: ctx})
+		result <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("refresh request did not start")
+	}
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("resolution error = %v, want context.Canceled", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("resolution did not stop on cancellation")
+	}
+	if store.saves != 0 {
+		t.Errorf("Save calls = %d, want 0", store.saves)
 	}
 }
 

@@ -140,6 +140,54 @@ func TestRunAuthLogoutDistinguishesLoadFailure(t *testing.T) {
 	}
 }
 
+func TestRunAuthLogoutCancellationReportsIncompleteRevocation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	store := &commandAuthStore{auth: &codexauth.CodexAuth{AccessToken: "access", RefreshToken: "refresh"}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var output bytes.Buffer
+	err := codexauth.WithRefreshLock(context.Background(), func() error {
+		return runAuthLogout(ctx, &output, store, codexauth.NewOAuthClient())
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("logout error = %v, want context.Canceled", err)
+	}
+	if !store.cleared || !strings.Contains(output.String(), "server-side revocation was skipped") {
+		t.Errorf("cleared = %t, output = %q", store.cleared, output.String())
+	}
+}
+
+type authRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f authRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestRunAuthLogoutCancellationDuringRevocation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	store := &commandAuthStore{auth: &codexauth.CodexAuth{AccessToken: "access", RefreshToken: "refresh"}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client := &codexauth.OAuthClient{Issuer: "https://auth.example", HTTPClient: &http.Client{
+		Transport: authRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			cancel()
+			return nil, req.Context().Err()
+		}),
+	}}
+	var output bytes.Buffer
+	err := runAuthLogout(ctx, &output, store, client)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("logout error = %v, want context.Canceled", err)
+	}
+	if !store.cleared || !strings.Contains(output.String(), "server-side revocation failed") {
+		t.Errorf("cleared = %t, output = %q", store.cleared, output.String())
+	}
+}
+
 func TestRunAuthLogoutReportsClearFailure(t *testing.T) {
 	store := &commandAuthStore{loadErr: codexauth.ErrNotFound, clearErr: errors.New("clear failed")}
 	err := runAuthLogout(context.Background(), &bytes.Buffer{}, store, codexauth.NewOAuthClient())
