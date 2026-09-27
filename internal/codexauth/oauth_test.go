@@ -107,18 +107,21 @@ func TestAuthorizeURLContainsCodexOAuthContract(t *testing.T) {
 		"response_type":              "code",
 		"client_id":                  ClientID,
 		"redirect_uri":               RedirectURI,
-		"scope":                      Scope,
+		"scope":                      "openid profile email offline_access",
 		"code_challenge":             "challenge",
 		"code_challenge_method":      "S256",
 		"id_token_add_organizations": "true",
 		"codex_cli_simplified_flow":  "true",
 		"state":                      "state-value",
-		"originator":                 "codex_cli_rs",
+		"originator":                 "open_code_review",
 	}
 	for key, value := range want {
 		if parsed.Query().Get(key) != value {
 			t.Errorf("query %s = %q, want %q", key, parsed.Query().Get(key), value)
 		}
+	}
+	if strings.Contains(parsed.Query().Get("scope"), "api.connectors.") {
+		t.Errorf("OAuth scope requests unused connector permissions: %q", parsed.Query().Get("scope"))
 	}
 }
 

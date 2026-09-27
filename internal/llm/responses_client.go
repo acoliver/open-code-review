@@ -55,12 +55,17 @@ func NewOpenAIResponsesClient(cfg ClientConfig) *OpenAIResponsesClient {
 		openaiopt.WithMaxRetries(5),
 		openaiopt.WithHeader("User-Agent", userAgent("")),
 		openaiopt.WithRequestTimeout(cfg.Timeout),
+		openaiopt.WithHTTPClient(httpClientWithHeaderTimeout(cfg.Timeout)),
 	}
 	if mw := retryCodesMiddleware(cfg.RetryCodes); mw != nil {
 		opts = append(opts, openaiopt.WithMiddleware(mw))
 	}
 	if cfg.DetailErrorEnvelope {
 		opts = append(opts, openaiopt.WithMiddleware(rewriteDetailErrorMiddleware))
+	}
+	// Raw before the retry observer; see NewOpenAIClient for why order matters.
+	if cfg.rawHolder != nil {
+		opts = append(opts, openaiopt.WithMiddleware(newRawMiddleware(cfg.rawHolder)))
 	}
 	if cfg.retryCollector != nil {
 		opts = append(opts, openaiopt.WithMiddleware(newRetryObserver(cfg.retryCollector)))
@@ -187,7 +192,7 @@ func (c *OpenAIResponsesClient) CompletionsWithCtx(ctx context.Context, req Chat
 		sdkResp, err = c.sdk.Responses.New(ctx, params, opts...)
 	}
 	if err != nil {
-		return nil, err
+		return nil, withProviderErrorBody(err)
 	}
 
 	if err = checkResponseStatus(sdkResp); err != nil {

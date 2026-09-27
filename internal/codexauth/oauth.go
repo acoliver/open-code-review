@@ -28,7 +28,7 @@ const (
 	Issuer      = "https://auth.openai.com"
 	ClientID    = "app_EMoamEEZ73f0CkXaXp7hrann"
 	RedirectURI = "http://localhost:1455/auth/callback"
-	Scope       = "openid profile email offline_access api.connectors.read api.connectors.invoke"
+	Scope       = "openid profile email offline_access"
 
 	refreshBefore         = 5 * time.Minute
 	lockRetry             = 50 * time.Millisecond
@@ -118,7 +118,7 @@ func (c *OAuthClient) authorizeURL(pkce pkceCodes, state string) string {
 		"id_token_add_organizations": {"true"},
 		"codex_cli_simplified_flow":  {"true"},
 		"state":                      {state},
-		"originator":                 {"codex_cli_rs"},
+		"originator":                 {"open_code_review"},
 	}
 	return c.issuer() + "/oauth/authorize?" + values.Encode()
 }

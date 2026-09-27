@@ -272,7 +272,7 @@ func TestNewLLMClient_CarriesProviderBehaviors(t *testing.T) {
 		RequiresStreaming:     true,
 		RejectsSamplingParams: true,
 		DetailErrorEnvelope:   true,
-	}, nil).(*OpenAIResponsesClient)
+	}, nil, nil).(*OpenAIResponsesClient)
 	if !ok {
 		t.Fatal("NewLLMClient did not return OpenAIResponsesClient")
 	}
