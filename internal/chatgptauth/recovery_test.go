@@ -56,6 +56,16 @@ func TestRefreshCommitAfterCancellation(t *testing.T) {
 			if saved.RefreshToken != expected {
 				t.Fatal("rotation persistence", saved.RefreshToken)
 			}
+			if valid {
+				c.http.Transport = roundTrip(func(*http.Request) (*http.Response, error) {
+					t.Error("saved rotation triggered another network request")
+					return nil, errors.New("unexpected network request")
+				})
+				next, err := c.Credentials(context.Background(), s, "")
+				if err != nil || next == nil || next.AccessToken != "rotated-access" || next.RefreshToken != "rotated-refresh" {
+					t.Fatal("saved rotation was not reusable", err)
+				}
+			}
 		})
 	}
 }

@@ -333,3 +333,45 @@ func TestLogout(t *testing.T) {
 		t.Fatal(a, err)
 	}
 }
+
+func TestSigningKeyCacheAndCancellation(t *testing.T) {
+	f := fixture(t)
+	transport := f.client.http.Transport
+	var discoveries, sets atomic.Int32
+	f.client.http.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			discoveries.Add(1)
+		case "/.well-known/jwks.json":
+			sets.Add(1)
+		}
+		return transport.RoundTrip(r)
+	})
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			key, err := f.client.signingKey(context.Background(), "key")
+			if err != nil || key == nil || key.N.Cmp(f.key.N) != 0 {
+				t.Error("cached signing key did not match", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if discoveries.Load() != 1 || sets.Load() != 1 {
+		t.Fatal("concurrent lookups duplicated key discovery", discoveries.Load(), sets.Load())
+	}
+	f.client.keys.until = time.Now().Add(-time.Minute)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := f.client.signingKey(ctx, "key"); !errors.Is(err, context.Canceled) {
+		t.Fatal("canceled discovery did not fail", err)
+	}
+	if _, err := f.client.signingKey(context.Background(), "key"); err != nil {
+		t.Fatal("discovery did not recover after cancellation", err)
+	}
+	if sets.Load() != 2 {
+		t.Fatal("expired cache did not fetch replacement keys", sets.Load())
+	}
+}

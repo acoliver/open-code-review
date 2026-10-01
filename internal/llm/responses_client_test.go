@@ -848,6 +848,43 @@ func TestAccumulateResponseStreamRejectsTerminalBeyondLimit(t *testing.T) {
 	}
 }
 
+func TestOpenAIResponsesClient_StreamingIncompleteContract(t *testing.T) {
+	for _, status := range []string{"incomplete", "failed"} {
+		t.Run(status, func(t *testing.T) {
+			events := responseStreamEvents(t,
+				`{"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"msg_partial","role":"assistant","status":"completed","content":[{"type":"output_text","text":"partial","annotations":[]}]}}`,
+				`{"type":"response.`+status+`","response":{"id":"resp_partial","status":"`+status+`","output":[]}}`,
+			)
+			accumulated, err := accumulateResponseStream(events)
+			if (err != nil) != (status == "failed") {
+				t.Fatal("ordinary accumulator terminal contract changed", err)
+			}
+			if status == "incomplete" && (accumulated == nil || accumulated.Status != responses.ResponseStatusIncomplete || accumulated.OutputText() != "partial") {
+				t.Fatal("incomplete accumulator discarded output")
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				for _, event := range events {
+					io.WriteString(w, "data: "+event.RawJSON()+"\n\n")
+				}
+				io.WriteString(w, "data: [DONE]\n\n")
+			}))
+			defer server.Close()
+			client := NewOpenAIResponsesClient(ClientConfig{URL: server.URL + "/v1", APIKey: "fixture-key", Model: "fixture-model", RequiresStreaming: true})
+			resp, err := client.CompletionsWithCtx(context.Background(), ChatRequest{Messages: []Message{NewTextMessage("user", "test")}})
+			if status == "failed" {
+				if err == nil || resp != nil {
+					t.Fatal("failed ordinary Responses stream returned success")
+				}
+				return
+			}
+			if err != nil || resp == nil || len(resp.Choices) != 1 || resp.Choices[0].FinishReason != "length" || resp.Choices[0].Message.Content == nil || *resp.Choices[0].Message.Content != "partial" {
+				t.Fatal("ordinary incomplete stream lost the length finish reason or partial output", err)
+			}
+		})
+	}
+}
+
 func TestOpenAIResponsesClient_StreamingSSEPreservesNativeReasoning(t *testing.T) {
 	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -352,3 +352,64 @@ func TestProviderTUINonConfigCredentialProviderSkipsAPIKeyStep(t *testing.T) {
 		})
 	}
 }
+
+func TestProviderTUINonConfigCredentialProviderDropsPreviousKey(t *testing.T) {
+	original := runLLMTestPath
+	t.Cleanup(func() { runLLMTestPath = original })
+	runLLMTestPath = func(string) error { return nil }
+	for _, provider := range []string{"bedrock", "chatgpt"} {
+		for _, typed := range []bool{false, true} {
+			name := provider + "/saved"
+			if typed {
+				name = provider + "/typed"
+			}
+			t.Run(name, func(t *testing.T) {
+				cfg := &Config{Provider: "openai", Providers: map[string]ProviderEntry{
+					"openai":  {APIKey: "openai-fixture-key"},
+					"chatgpt": {Models: []string{"fixture-model"}},
+				}}
+				path := filepath.Join(t.TempDir(), "config.json")
+				m := newProviderTUI(cfg, path)
+				if m.apiKeyOriginal != "openai-fixture-key" || !m.apiKeyMasked {
+					t.Fatal("previous provider did not seed the saved key")
+				}
+				if typed {
+					result, _ := m.Update(enterKey())
+					m = result.(providerTUIModel)
+					result, _ = m.Update(enterKey())
+					m = result.(providerTUIModel)
+					if m.step != stepAPIKey {
+						t.Fatal("key-based provider skipped the key step")
+					}
+					m.beginAPIKeyReplace()
+					m.apiKeyInput.SetValue("typed-fixture-key")
+					result, _ = m.Update(escKey())
+					m = result.(providerTUIModel)
+					result, _ = m.Update(escKey())
+					m = result.(providerTUIModel)
+				}
+				for i, p := range m.providers {
+					if p.Name == provider {
+						m.officialIdx = i
+					}
+				}
+				result, _ := m.Update(enterKey())
+				m = result.(providerTUIModel)
+				result, cmd := m.Update(enterKey())
+				m = result.(providerTUIModel)
+				if !m.confirmed || cmd == nil || m.step == stepAPIKey {
+					t.Fatal("non-config credential provider did not finish at model selection")
+				}
+				if m.apiKeyOriginal != "" || m.apiKeyMasked || m.apiKeyInput.Value() != "" || m.result().apiKey != "" {
+					t.Fatal("previous provider's key survived selection")
+				}
+				if err := applyOfficialProviderConfig(path, cfg, m.result()); err != nil {
+					t.Fatal(err)
+				}
+				if cfg.Providers[provider].APIKey != "" || cfg.Providers["openai"].APIKey != "openai-fixture-key" {
+					t.Fatal("cross-provider key leaked or the original provider key changed")
+				}
+			})
+		}
+	}
+}

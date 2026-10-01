@@ -1877,11 +1877,9 @@ func (m providerTUIModel) handleEnter() (tea.Model, tea.Cmd) {
 			// The api-key state still carries whatever the previously active
 			// provider seeded (or the user typed before backing out), and
 			// result() would report it as this provider's key — drop it.
-			if m.currentProvider().ExternalAuth {
-				m.apiKeyOriginal = ""
-				m.apiKeyMasked = false
-				m.apiKeyInput.SetValue("")
-			}
+			m.apiKeyOriginal = ""
+			m.apiKeyMasked = false
+			m.apiKeyInput.SetValue("")
 			m.formError = ""
 			m.confirmed = true
 			return m, tea.Quit

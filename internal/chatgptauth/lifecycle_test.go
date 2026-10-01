@@ -433,3 +433,41 @@ func TestCallbackOneTimeAndWrongMethod(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCallbackMalformedQueryDoesNotExchangeCode(t *testing.T) {
+	for _, suffix := range []string{"&broken=%zz", "&broken=a;b"} {
+		t.Run(suffix, func(t *testing.T) {
+			f := fixture(t)
+			s := testStore(t)
+			old := openBrowser
+			defer func() { openBrowser = old }()
+			openBrowser = func(_ context.Context, local string) error {
+				q, err := localAuthorization(local)
+				if err != nil {
+					return err
+				}
+				callback := q.Get("redirect_uri") + "?" + url.Values{"state": {q.Get("state")}, "code": {"sensitive-fixture-code"}, "client_id": {"oaiapp_one"}}.Encode() + suffix
+				r, err := http.Get(callback)
+				if err != nil {
+					return err
+				}
+				defer r.Body.Close()
+				body, err := io.ReadAll(r.Body)
+				if r.StatusCode != 400 || strings.Contains(string(body), "sensitive-fixture-code") || strings.Contains(string(body), q.Get("state")) {
+					t.Error("malformed callback response exposed authorization parameters or did not fail")
+				}
+				return err
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			got, err := f.client.Login(ctx, s, "", false, false, false, io.Discard)
+			if got != nil || err == nil || err.Error() != "invalid OAuth callback query" || f.calls.Load() != 0 {
+				t.Fatal("malformed callback reached code exchange", err)
+			}
+			d, err := s.Snapshot()
+			if err != nil || len(d.Accounts) != 0 {
+				t.Fatal("malformed callback saved an account", err)
+			}
+		})
+	}
+}

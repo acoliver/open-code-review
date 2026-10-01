@@ -147,6 +147,34 @@ func TestChatGPTCommandLifecycle(t *testing.T) {
 		t.Fatal("invalid provider logout")
 	}
 }
+func TestChatGPTStatusExpiryAfterSignOut(t *testing.T) {
+	s := commandChatGPTAccount(t)
+	d, err := s.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := runChatGPTStatus(&out); err != nil {
+		t.Fatal(err)
+	}
+	expiry := "Expires: " + d.Accounts[0].ExpiresAt.Format(time.RFC3339)
+	if !strings.Contains(out.String(), expiry) {
+		t.Fatal("signed-in expiry omitted", out.String())
+	}
+	for _, a := range d.Accounts {
+		if err := s.Clear(context.Background(), a.ClientID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out.Reset()
+	if err := runChatGPTStatus(&out); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(out.String(), "Status: signed out") != len(d.Accounts) || strings.Contains(out.String(), "Expires:") || strings.Contains(out.String(), "0001-") {
+		t.Fatal("signed-out expiry displayed", out.String())
+	}
+}
+
 func TestChatGPTCommandStoreErrors(t *testing.T) {
 	t.Setenv("HOME", "")
 	var out bytes.Buffer

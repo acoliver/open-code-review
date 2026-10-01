@@ -75,8 +75,13 @@ func runChatGPTStatus(out io.Writer) error {
 				status = "Using ChatGPT plan"
 			}
 		}
-		if _, err = fmt.Fprintf(out, "Account: %s%s\nEmail: %s\nStatus: %s\nExpires: %s\n", a.ClientID, selected, a.Email, status, a.ExpiresAt.Format("2006-01-02T15:04:05Z07:00")); err != nil {
+		if _, err = fmt.Fprintf(out, "Account: %s%s\nEmail: %s\nStatus: %s\n", a.ClientID, selected, a.Email, status); err != nil {
 			return err
+		}
+		if a.AccessToken != "" {
+			if _, err = fmt.Fprintf(out, "Expires: %s\n", a.ExpiresAt.Format("2006-01-02T15:04:05Z07:00")); err != nil {
+				return err
+			}
 		}
 	}
 	_, err = fmt.Fprintln(out, "Manage usage:", chatgptauth.UsageURL)
