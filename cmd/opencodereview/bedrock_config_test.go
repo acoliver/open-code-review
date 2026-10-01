@@ -281,9 +281,16 @@ func TestCheckAPIKeyRequirement(t *testing.T) {
 	if !ok {
 		t.Fatal("anthropic preset not registered")
 	}
+	chatgpt, ok := llm.LookupProvider("chatgpt")
+	if !ok {
+		t.Fatal("chatgpt preset not registered")
+	}
 
 	if err := checkAPIKeyRequirement("bedrock", "", "", bedrock, true); err != nil {
 		t.Errorf("ambient provider with no api_key = %v, want nil", err)
+	}
+	if err := checkAPIKeyRequirement("chatgpt", "", "", chatgpt, true); err != nil {
+		t.Errorf("external-auth provider with no api_key = %v, want nil", err)
 	}
 
 	t.Setenv(anthropic.EnvVar, "")
@@ -295,48 +302,53 @@ func TestCheckAPIKeyRequirement(t *testing.T) {
 	}
 }
 
-// TestProviderTUIAmbientProviderSkipsAPIKeyStep pins the wizard flow: the model
-// step is the last one for a provider with no key to collect. An API-key prompt
-// that must be left blank reads as a step the user failed to complete.
-func TestProviderTUIAmbientProviderSkipsAPIKeyStep(t *testing.T) {
-	m := newProviderTUI(&Config{}, "")
-	idx := -1
-	for i, p := range m.providers {
-		if p.Name == "bedrock" {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
-		t.Fatal("bedrock not offered in the official provider list")
-	}
-	m.officialIdx = idx
+// TestProviderTUINonConfigCredentialProviderSkipsAPIKeyStep pins the wizard
+// flow: the model step is the last one for a provider with no key to collect.
+func TestProviderTUINonConfigCredentialProviderSkipsAPIKeyStep(t *testing.T) {
+	for _, provider := range []string{"bedrock", "chatgpt"} {
+		t.Run(provider, func(t *testing.T) {
+			m := newProviderTUI(&Config{Providers: map[string]ProviderEntry{
+				"chatgpt": {Models: []string{"fixture-model"}},
+			}}, "")
+			idx := -1
+			for i, p := range m.providers {
+				if p.Name == provider {
+					idx = i
+					break
+				}
+			}
+			if idx < 0 {
+				t.Fatalf("%s not offered in the official provider list", provider)
+			}
+			m.officialIdx = idx
 
-	result, _ := m.Update(enterKey())
-	atModel := result.(providerTUIModel)
-	if atModel.step != stepModel {
-		t.Fatalf("after Enter on provider, step = %d, want %d (stepModel)", atModel.step, stepModel)
-	}
+			result, _ := m.Update(enterKey())
+			atModel := result.(providerTUIModel)
+			if atModel.step != stepModel {
+				t.Fatalf("after Enter on provider, step = %d, want %d (stepModel)", atModel.step, stepModel)
+			}
 
-	result, cmd := atModel.Update(enterKey())
-	done := result.(providerTUIModel)
-	if done.step == stepAPIKey {
-		t.Error("ambient provider advanced to stepAPIKey; want the model step to be final")
-	}
-	if !done.confirmed {
-		t.Error("confirmed = false; want the selection confirmed from the model step")
-	}
-	if cmd == nil {
-		t.Error("no command returned; want tea.Quit")
-	}
-	res := done.result()
-	if res.provider != "bedrock" {
-		t.Errorf("result provider = %q, want bedrock", res.provider)
-	}
-	if res.apiKey != "" {
-		t.Errorf("result apiKey = %q, want empty for an ambient provider", res.apiKey)
-	}
-	if got := res.resolvedModel(); got == "" {
-		t.Error("resolvedModel is empty; want the model selected on the model step")
+			result, cmd := atModel.Update(enterKey())
+			done := result.(providerTUIModel)
+			if done.step == stepAPIKey {
+				t.Error("provider advanced to stepAPIKey; want the model step to be final")
+			}
+			if !done.confirmed {
+				t.Error("confirmed = false; want the selection confirmed from the model step")
+			}
+			if cmd == nil {
+				t.Error("no command returned; want tea.Quit")
+			}
+			res := done.result()
+			if res.provider != provider {
+				t.Errorf("result provider = %q, want %q", res.provider, provider)
+			}
+			if res.apiKey != "" {
+				t.Errorf("result apiKey = %q, want empty", res.apiKey)
+			}
+			if got := res.resolvedModel(); got == "" {
+				t.Error("resolvedModel is empty; want the model selected on the model step")
+			}
+		})
 	}
 }
