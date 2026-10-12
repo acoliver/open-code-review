@@ -21,7 +21,7 @@ import (
 
 func commandChatGPTAccount(t *testing.T) chatgptauth.Store {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	s, err := chatgptauth.DefaultStore()
 	if err != nil {
 		t.Fatal(err)
@@ -176,18 +176,18 @@ func TestChatGPTStatusExpiryAfterSignOut(t *testing.T) {
 }
 
 func TestChatGPTCommandStoreErrors(t *testing.T) {
-	t.Setenv("HOME", "")
+	setTestHome(t, "")
 	var out bytes.Buffer
 	if err := runChatGPTStatus(&out); err == nil {
-		t.Fatal("missing HOME")
+		t.Fatal("missing home directory")
 	}
 	if err := runChatGPTLogout(context.Background(), &out); err == nil {
-		t.Fatal("missing HOME")
+		t.Fatal("missing home directory")
 	}
 	old := authLoginDevice
 	authLoginDevice = false
 	defer func() { authLoginDevice = old }()
 	if err := runChatGPTLogin(context.Background(), &out); err == nil {
-		t.Fatal("missing HOME")
+		t.Fatal("missing home directory")
 	}
 }

@@ -27,7 +27,7 @@ func TestChatGPTAuthCLIValidation(t *testing.T) {
 	}
 }
 func TestChatGPTAuthStatusEmpty(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	var out bytes.Buffer
 	if err := runChatGPTStatus(&out); err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestChatGPTAuthStatusEmpty(t *testing.T) {
 	}
 }
 func TestChatGPTAuthLogoutEmpty(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	s, err := chatgptauth.DefaultStore()
 	if err != nil {
 		t.Fatal(err)

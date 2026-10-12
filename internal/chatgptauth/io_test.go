@@ -18,14 +18,17 @@ import (
 )
 
 func TestDefaultStoreAndInvalidStores(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	s, err := DefaultStore()
-	if err != nil || !strings.HasSuffix(s.Dir, "auth/chatgpt") {
+	if err != nil || s.Dir != filepath.Join(home, ".opencodereview", "auth", "chatgpt") {
 		t.Fatal(s, err)
 	}
 	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
 	if _, err := DefaultStore(); err == nil {
-		t.Fatal("empty HOME")
+		t.Fatal("empty home directory")
 	}
 	if _, err := (Store{}).Host(context.Background()); err == nil {
 		t.Fatal("empty store dir")

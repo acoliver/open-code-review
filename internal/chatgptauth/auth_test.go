@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -68,12 +69,18 @@ func TestStoreLifecycle(t *testing.T) {
 	}
 	for _, f := range []string{"accounts.json", "host.json", "session.lock"} {
 		info, err := os.Stat(filepath.Join(s.Dir, f))
-		if err != nil || info.Mode().Perm() != 0600 {
+		if err != nil || !info.Mode().IsRegular() {
 			t.Fatal(f, info, err)
 		}
+		if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+			t.Fatal(f, info.Mode())
+		}
 	}
-	info, _ := os.Stat(s.Dir)
-	if info.Mode().Perm() != 0700 {
+	info, err := os.Stat(s.Dir)
+	if err != nil || !info.IsDir() {
+		t.Fatal(info, err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0700 {
 		t.Fatal(info.Mode())
 	}
 	if err := s.Clear(ctx, b.ClientID); err != nil {
