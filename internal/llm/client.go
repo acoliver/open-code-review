@@ -658,6 +658,7 @@ func (c *OpenAIClient) CompletionsWithCtx(ctx context.Context, req ChatRequest) 
 			finalizeRequest(ctx, c.cfg.retryCollector, errRequestPanicked)
 			panic(r)
 		}
+		err = describeTimeout(ctx, err)
 		finalizeRequest(ctx, c.cfg.retryCollector, err)
 	}()
 
@@ -1464,6 +1465,7 @@ func (c *AnthropicClient) CompletionsWithCtx(ctx context.Context, req ChatReques
 			finalizeRequest(ctx, c.cfg.retryCollector, errRequestPanicked)
 			panic(r)
 		}
+		err = describeTimeout(ctx, err)
 		finalizeRequest(ctx, c.cfg.retryCollector, err)
 	}()
 

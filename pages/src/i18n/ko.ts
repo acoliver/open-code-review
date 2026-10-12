@@ -297,6 +297,7 @@ export const ko: TranslationKeys = {
   'docs.sidebar.claudeCode': 'Command (Claude Code)',
   'docs.sidebar.delegate': '위임 모드',
   'docs.sidebar.cicd': 'CI/CD',
+  'docs.sidebar.acp': 'ACP',
   'docs.sidebar.contributing': '기여하기',
   'docs.sidebar.faq': 'FAQ',
   'docs.sidebar.chatgptPreview': 'ChatGPT 로그인 미리보기',
